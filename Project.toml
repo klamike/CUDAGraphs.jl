@@ -1,0 +1,17 @@
+name = "CUDAGraphs"
+uuid = "c66d65b5-1435-428e-a98f-c21a2a531f64"
+version = "0.1.0"
+authors = ["Klamkin, Michael <mklamkin3@gatech.edu>"]
+
+[deps]
+CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
+
+[compat]
+CUDA = "5.4"
+julia = "1.10"
+
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Test"]
