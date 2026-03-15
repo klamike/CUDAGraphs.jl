@@ -46,13 +46,13 @@ function _break_capture!(ctx::CaptureContext, f)
     push!(cache.execs, exec)
     push!(cache.break_closures, f)
 
-    # Run break work eagerly (data may be stale during capture — that's OK)
-    result = f()
+    # Skip break work during capture — it would run on stale data anyway.
+    # The stored closure will run during replay with correct data.
 
     # Start next segment capture
     ctx.segment += 1
     _begin_capture(stream)
-    return result
+    return nothing
 end
 
 # --- :replaying (used by @unsafe_scaptured subsequent iterations) ---
