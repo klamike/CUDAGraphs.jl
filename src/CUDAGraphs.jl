@@ -96,19 +96,6 @@ function _isvalid_ctx(ctx::CUDA.CuContext)
     end
 end
 
-function _install_cuda_overhead_patches!()
-    @eval begin
-        @inline CUDA.is_capturing(stream::CUDA.CuStream) =
-            CUDAGraphs._in_unsafe_capture() ? true :
-            CUDAGraphs._in_unsafe_replay() ? false :
-            (CUDA.capture_status(stream).status != CUDA.STREAM_CAPTURE_STATUS_NONE)
-
-        @inline CUDA.isvalid(ctx::CUDA.CuContext) =
-            CUDAGraphs._in_unsafe_scaptured() ? true : CUDAGraphs._isvalid_ctx(ctx)
-    end
-    return
-end
-
 include("cache.jl")
 include("context.jl")
 include("raw_graph_api.jl")
@@ -119,7 +106,6 @@ include("macros.jl")
 
 function __init__()
     _init_context!()
-    _install_cuda_overhead_patches!()
     _ENABLED[] = !(get(ENV, "JULIA_CUDAGRAPHS_DISABLE", "") in ("1", "true", "TRUE", "yes", "YES"))
     _DEBUG_CAPTURE_FAILURES[] = get(ENV, "JULIA_CUDAGRAPHS_DEBUG_CAPTURE_FAILURES", "") in ("1", "true", "TRUE", "yes", "YES")
 end
