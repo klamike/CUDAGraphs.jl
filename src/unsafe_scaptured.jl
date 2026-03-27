@@ -39,24 +39,23 @@ function _unsafe_capture_and_replay!(f, cache::SegmentedGraphCache)
         push!(cache.execs, exec)
         cache.n_segments = ctx.segment
         cache.valid = true
-    catch e
+    catch
         ok = false
+        # Capture failed, probably JIT compilation. Next call should capture successfully.
         try; _end_capture(stream); catch; end
         invalidate!(cache)
-        @warn "Segmented graph capture failed" exception=(e, catch_backtrace())
+        ctx.mode = :off
+        GC.enable(gc)
+        f()
+        return
     finally
         ctx.mode = :off
         GC.enable(gc)
     end
 
-    if ok
-        # Replay to get correct first-iteration results
-        # (capture-time kernel work was recorded but not executed)
-        _unsafe_replay!(cache)
-    else
-        # Capture failed — run ungraphed, retry next call
-        f()
-    end
+    # Replay to get correct first-iteration results
+    # (capture-time kernel work was recorded but not executed)
+    _unsafe_replay!(cache)
 end
 
 function _unsafe_replay!(cache::SegmentedGraphCache)

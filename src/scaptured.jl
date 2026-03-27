@@ -40,11 +40,14 @@ function _run_scaptured!(f, cache::SegmentedGraphCache)
         _launch(cache.execs[seg], stream)
         cache.n_segments = seg
         cache.valid = true
-    catch e
-        # Capture failed — clean up any in-progress capture
+    catch
+        # Capture failed, probably JIT compilation. Next call should capture successfully.
         try; _end_capture(stream); catch; end
         invalidate!(cache)
-        rethrow()
+        ctx.mode = :off
+        GC.enable(gc)
+        f()
+        return
     finally
         ctx.mode = :off
         GC.enable(gc)
