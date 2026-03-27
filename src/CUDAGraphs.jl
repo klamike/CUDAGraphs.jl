@@ -59,7 +59,21 @@ module CUDAGraphs
 using CUDA
 
 export @graphbreak, @scaptured, @unsafe_scaptured,
-       SegmentedGraphCache, invalidate!
+       SegmentedGraphCache, invalidate!, set_debug_capture_failures!
+
+const _DEBUG_CAPTURE_FAILURES = Ref(false)
+
+set_debug_capture_failures!(enabled::Bool=true) = (_DEBUG_CAPTURE_FAILURES[] = enabled)
+
+function _report_capture_failure(mode::Symbol, err, bt)
+    _DEBUG_CAPTURE_FAILURES[] || return
+    msg = sprint() do io
+        print(io, "CUDAGraphs ", mode, " capture failed: ")
+        showerror(io, err, bt)
+    end
+    @warn msg
+    return
+end
 
 include("cache.jl")
 include("context.jl")
@@ -71,6 +85,7 @@ include("macros.jl")
 
 function __init__()
     _init_context!()
+    _DEBUG_CAPTURE_FAILURES[] = get(ENV, "JULIA_CUDAGRAPHS_DEBUG_CAPTURE_FAILURES", "") in ("1", "true", "TRUE", "yes", "YES")
 end
 
 end # module

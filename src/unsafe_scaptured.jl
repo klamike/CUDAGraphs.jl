@@ -39,8 +39,10 @@ function _unsafe_capture_and_replay!(f, cache::SegmentedGraphCache)
         push!(cache.execs, exec)
         cache.n_segments = ctx.segment
         cache.valid = true
-    catch
+    catch err
         ok = false
+        bt = catch_backtrace()
+        _report_capture_failure(:unsafe_scaptured, err, bt)
         # Capture failed, probably JIT compilation. Next call should capture successfully.
         try; _end_capture(stream); catch; end
         invalidate!(cache)

@@ -40,7 +40,9 @@ function _run_scaptured!(f, cache::SegmentedGraphCache)
         _launch(cache.execs[seg], stream)
         cache.n_segments = seg
         cache.valid = true
-    catch
+    catch err
+        bt = catch_backtrace()
+        _report_capture_failure(:scaptured, err, bt)
         # Capture failed, probably JIT compilation. Next call should capture successfully.
         try; _end_capture(stream); catch; end
         invalidate!(cache)
