@@ -11,6 +11,7 @@
 =#
 
 function _run_scaptured!(f, cache::SegmentedGraphCache)
+    _ENABLED[] || return f()
     stream = CUDA.stream()
     ctx = _CTX[]
     @assert ctx.mode === :off "nested @scaptured / @unsafe_scaptured not supported"
@@ -23,9 +24,11 @@ function _run_scaptured!(f, cache::SegmentedGraphCache)
     gc = GC.enable(false)
     try
         _begin_capture(stream)
+        ctx.capture_active = true
         f()  # user block: kernels recorded, breaks update+launch+execute
         # End final segment
         graph = _end_capture(stream)
+        ctx.capture_active = false
         seg = ctx.segment
         if seg <= length(cache.execs)
             if !_try_update(cache.execs[seg], graph)
@@ -44,14 +47,19 @@ function _run_scaptured!(f, cache::SegmentedGraphCache)
         bt = catch_backtrace()
         _report_capture_failure(:scaptured, err, bt)
         # Capture failed, probably JIT compilation. Next call should capture successfully.
-        try; _end_capture(stream); catch; end
+        try
+            ctx.capture_active && _end_capture(stream)
+        catch
+        end
         invalidate!(cache)
         ctx.mode = :off
+        ctx.capture_active = false
         GC.enable(gc)
         f()
         return
     finally
         ctx.mode = :off
+        ctx.capture_active = false
         GC.enable(gc)
     end
 end

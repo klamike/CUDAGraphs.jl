@@ -59,10 +59,12 @@ module CUDAGraphs
 using CUDA
 
 export @graphbreak, @scaptured, @unsafe_scaptured,
-       SegmentedGraphCache, invalidate!, set_debug_capture_failures!
+       SegmentedGraphCache, invalidate!, set_debug_capture_failures!, set_enabled!
 
+const _ENABLED = Ref(true)
 const _DEBUG_CAPTURE_FAILURES = Ref(false)
 
+set_enabled!(enabled::Bool=true) = (_ENABLED[] = enabled)
 set_debug_capture_failures!(enabled::Bool=true) = (_DEBUG_CAPTURE_FAILURES[] = enabled)
 
 function _report_capture_failure(mode::Symbol, err, bt)
@@ -72,6 +74,38 @@ function _report_capture_failure(mode::Symbol, err, bt)
         showerror(io, err, bt)
     end
     @warn msg
+    return
+end
+
+@inline _in_unsafe_capture() = _CTX[].mode === :capturing && _CTX[].capture_active
+@inline _in_unsafe_replay() = _CTX[].mode === :replaying
+@inline _in_unsafe_scaptured() = _in_unsafe_capture() || _in_unsafe_replay()
+
+function _isvalid_ctx(ctx::CUDA.CuContext)
+    if CUDA.driver_version() >= v"12"
+        id_ref = Ref{CUDA.Culonglong}()
+        res = CUDA.unchecked_cuCtxGetId(ctx, id_ref)
+        res == CUDA.ERROR_CONTEXT_IS_DESTROYED && return false
+        res != CUDA.SUCCESS && CUDA.throw_api_error(res)
+        return ctx.id == id_ref[]
+    else
+        version_ref = Ref{CUDA.Cuint}()
+        res = CUDA.unchecked_cuCtxGetApiVersion(ctx, version_ref)
+        res == CUDA.ERROR_INVALID_CONTEXT && return false
+        return true
+    end
+end
+
+function _install_cuda_overhead_patches!()
+    @eval begin
+        @inline CUDA.is_capturing(stream::CUDA.CuStream) =
+            CUDAGraphs._in_unsafe_capture() ? true :
+            CUDAGraphs._in_unsafe_replay() ? false :
+            (CUDA.capture_status(stream).status != CUDA.STREAM_CAPTURE_STATUS_NONE)
+
+        @inline CUDA.isvalid(ctx::CUDA.CuContext) =
+            CUDAGraphs._in_unsafe_scaptured() ? true : CUDAGraphs._isvalid_ctx(ctx)
+    end
     return
 end
 
@@ -85,6 +119,8 @@ include("macros.jl")
 
 function __init__()
     _init_context!()
+    _install_cuda_overhead_patches!()
+    _ENABLED[] = !(get(ENV, "JULIA_CUDAGRAPHS_DISABLE", "") in ("1", "true", "TRUE", "yes", "YES"))
     _DEBUG_CAPTURE_FAILURES[] = get(ENV, "JULIA_CUDAGRAPHS_DEBUG_CAPTURE_FAILURES", "") in ("1", "true", "TRUE", "yes", "YES")
 end
 

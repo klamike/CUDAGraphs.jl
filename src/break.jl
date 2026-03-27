@@ -41,6 +41,7 @@ function _break_capture!(ctx::CaptureContext, f)
 
     # End current segment capture
     graph = _end_capture(stream)
+    ctx.capture_active = false
     exec = _instantiate(graph)
     push!(cache.graphs, graph)
     push!(cache.execs, exec)
@@ -52,6 +53,7 @@ function _break_capture!(ctx::CaptureContext, f)
     # Start next segment capture
     ctx.segment += 1
     _begin_capture(stream)
+    ctx.capture_active = true
     return nothing
 end
 
@@ -80,6 +82,7 @@ function _break_recapture!(ctx::CaptureContext, f)
 
     # End current segment capture → get graph of recorded kernels
     graph = _end_capture(stream)
+    ctx.capture_active = false
 
     # Update or create the cached exec for this segment
     if seg <= length(cache.execs)
@@ -102,5 +105,6 @@ function _break_recapture!(ctx::CaptureContext, f)
     # Resume capture for next segment
     ctx.segment += 1
     _begin_capture(stream)
+    ctx.capture_active = true
     return result
 end

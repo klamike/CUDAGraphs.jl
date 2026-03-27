@@ -13,13 +13,14 @@ mutable struct CaptureContext
     cache::SegmentedGraphCache
     segment::Int
     stream::CUDA.CuStream
+    capture_active::Bool
 end
 
 # Module-level context. For thread safety in v2, use task_local_storage.
 const _CTX = Ref{CaptureContext}()
 
 function _init_context!()
-    _CTX[] = CaptureContext(:off, SegmentedGraphCache(), 0, CUDA.default_stream())
+    _CTX[] = CaptureContext(:off, SegmentedGraphCache(), 0, CUDA.default_stream(), false)
 end
 
 @inline _mode() = _CTX[].mode

@@ -10,6 +10,7 @@
 =#
 
 function _run_unsafe_scaptured!(f, cache::SegmentedGraphCache)
+    _ENABLED[] || return f()
     if cache.valid
         _unsafe_replay!(cache)
     else
@@ -26,14 +27,17 @@ function _unsafe_capture_and_replay!(f, cache::SegmentedGraphCache)
     ctx.cache = cache
     ctx.segment = 1
     ctx.stream = stream
+    ctx.capture_active = false
 
     gc = GC.enable(false)
     ok = true
     try
         _begin_capture(stream)
+        ctx.capture_active = true
         f()  # user block: kernels recorded, breaks end+store+run+begin
         # End final segment
         graph = _end_capture(stream)
+        ctx.capture_active = false
         exec = _instantiate(graph)
         push!(cache.graphs, graph)
         push!(cache.execs, exec)
@@ -44,14 +48,19 @@ function _unsafe_capture_and_replay!(f, cache::SegmentedGraphCache)
         bt = catch_backtrace()
         _report_capture_failure(:unsafe_scaptured, err, bt)
         # Capture failed, probably JIT compilation. Next call should capture successfully.
-        try; _end_capture(stream); catch; end
+        try
+            ctx.capture_active && _end_capture(stream)
+        catch
+        end
         invalidate!(cache)
         ctx.mode = :off
+        ctx.capture_active = false
         GC.enable(gc)
         f()
         return
     finally
         ctx.mode = :off
+        ctx.capture_active = false
         GC.enable(gc)
     end
 
@@ -62,11 +71,22 @@ end
 
 function _unsafe_replay!(cache::SegmentedGraphCache)
     stream = CUDA.stream()
+    ctx = _CTX[]
+    ctx.mode = :replaying
+    ctx.capture_active = false
+    ctx.cache = cache
+    ctx.stream = stream
     n = cache.n_segments
-    for seg in 1:n
-        _launch(cache.execs[seg], stream)
-        if seg < n
-            cache.break_closures[seg]()  # stream-ordered after graph
+    try
+        for seg in 1:n
+            ctx.segment = seg
+            _launch(cache.execs[seg], stream)
+            if seg < n
+                cache.break_closures[seg]()  # stream-ordered after graph
+            end
         end
+    finally
+        ctx.mode = :off
+        ctx.capture_active = false
     end
 end
